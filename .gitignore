@@ -1,0 +1,24 @@
+# ESP-IDF
+/build/
+sdkconfig
+sdkconfig.old
+managed_components/
+
+# IDEs
+.vscode/
+.settings/
+
+# Backups
+*.bak
+
+# Binaries
+*.bin
+*.elf
+*.map
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Custom
+InternalDisk/
