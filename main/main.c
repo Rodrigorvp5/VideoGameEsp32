@@ -101,7 +101,7 @@ volatile int joystick_y = 1900;
 #define I2C_SDA 27
 #define I2C_SCL 25
 #define I2C_PORT I2C_NUM_1
-#define I2C_FREQ 100000
+#define I2C_FREQ 400000
 
 ssd1306_handle_t oled = NULL;
 
@@ -203,97 +203,61 @@ static void guiTask(void *pvParameter);
 static void animacionNaveTask(void *pvParameter);
 static void animacionNaveJugadorPruebaTask(void *pvParameter);
 static void animacionMisil(void *pvParameter);
-void BotonTask(void *pvParameter);
-void dibujar_nave_pixelart(lv_obj_t * parent);
-void dibujar_nave_jugador(lv_obj_t * puntero);
-void dibujar_misil(lv_obj_t * puntero);
-void IniciarADC(void);
-void IniciarPines(void);
-void tareaADC(void *pv);
-bool FuncionVerificarColision(int jugadorX, int jugadorY, int EnemigoX, int EnemigoY);
-bool ColisionMisilEnemigo(int misilX, int misilY, int enemigoX, int enemigoY);
-void iniciarTimer30s();
-void Timer30s_Callback(void *arg);
-void send_audio_cmd(const char *cmd);
-void neopixel_init();
-void neopixel_VidasTask(void *pvParameter);
-void ReiniciarJuego();
-
-
-void dibujar_nave_horizontal(lv_obj_t *parent);
-void dibujar_misil_enemigo(lv_obj_t *parent, int idx);
-
-void animacionEnemigosHorizontales(void *pvParameter);
-void animacionBalasEnemigas(void *pvParameter);
-
-bool ColisionBalaJugador(int balaX, int balaY, int jugadorX, int jugadorY);
-void disparar_bala_enemiga(int ex, int ey);
-void inicializar_enemigos_y_balas();
-void spawn_enemigo_horizontal(int idx);
-
-bool ColisionJugadorEnemigoH(int jugadorX, int jugadorY, int enemigoX, int enemigoY);
-void i2c_init(void);
+static void BotonTask(void *pvParameter);
+static void dibujar_nave_pixelart(lv_obj_t * parent);
+static void dibujar_nave_jugador(lv_obj_t * puntero);
+static void dibujar_misil(lv_obj_t * puntero);
+static void IniciarADC(void);
+static void IniciarPines(void);
+static void tareaADC(void *pv);
+static bool FuncionVerificarColision(int jugadorX, int jugadorY, int EnemigoX, int EnemigoY);
+static bool ColisionMisilEnemigo(int misilX, int misilY, int enemigoX, int enemigoY);
+static void iniciarTimer30s();
+static void Timer30s_Callback(void *arg);
+static void send_audio_cmd(const char *cmd);
+static void neopixel_init();
+static void neopixel_VidasTask(void *pvParameter);
+static void ReiniciarJuego();
+static void dibujar_nave_horizontal(lv_obj_t *parent);
+static void dibujar_misil_enemigo(lv_obj_t *parent, int idx);
+static void animacionEnemigosHorizontales(void *pvParameter);
+static void animacionBalasEnemigas(void *pvParameter);
+static bool ColisionBalaJugador(int balaX, int balaY, int jugadorX, int jugadorY);
+static void disparar_bala_enemiga(int ex, int ey);
+static void inicializar_enemigos_y_balas();
+static void spawn_enemigo_horizontal(int idx);
+static bool ColisionJugadorEnemigoH(int jugadorX, int jugadorY, int enemigoX, int enemigoY);
+static void i2c_init(void);
+static void setup_storage(void);
+static void setup_peripherals(void);
+static void setup_uart(void);
+static void start_game_tasks(void);
+static void init_timer_service(void);
 
 adc_continuous_handle_t handle = NULL;
 esp_timer_handle_t timer30s;
 led_strip_handle_t strip;
 
-// ================= APP MAIN =================
-void app_main() {
-    // Inicializacion de SPIFFS (Opcional)
+// ================= INIT HELPERS =================
+static void setup_storage(void) {
     esp_vfs_spiffs_conf_t DiskConf = {
-            .base_path = "/Datos",
-            .partition_label = NULL,
-            .max_files = 5,
-            .format_if_mount_failed = false
+        .base_path = "/Datos",
+        .partition_label = NULL,
+        .max_files = 5,
+        .format_if_mount_failed = false
     };
+
     esp_vfs_spiffs_register(&DiskConf);
+}
 
-    //Inicialización del ADC
-    
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-
-    // 1. Tarea GUI (Pantalla)
-    xTaskCreatePinnedToCore(guiTask, "gui", 4096*2, NULL, tskIDLE_PRIORITY+1, NULL, 1);
-    
-    vTaskDelay(1000 / portTICK_PERIOD_MS);
-
+static void setup_peripherals(void) {
     IniciarADC();
-
     IniciarPines();
-
     neopixel_init();
-
-    inicializar_enemigos_y_balas();
-
     i2c_init();
+}
 
-    oled = ssd1306_create(I2C_PORT, SSD1306_I2C_ADDRESS);
-    ssd1306_clear_screen(oled, 0x00);
-    ssd1306_draw_string(oled, 0, 0, (uint8_t *)"Puntos: 0", 16, 1);
-    ssd1306_refresh_gram(oled);
-
-    xTaskCreate(tareaADC, "tareaADC", 4096, NULL, 5, NULL);
-
-    // 2. Tarea Animacion (Logica del juego)
-    xTaskCreatePinnedToCore(animacionNaveTask, "animacion", 2048, NULL, tskIDLE_PRIORITY+1, NULL, 0);
-    xTaskCreatePinnedToCore(animacionNaveJugadorPruebaTask, "animacion2", 2048, NULL, tskIDLE_PRIORITY+1, NULL,0);
-    xTaskCreatePinnedToCore(animacionMisil, "animacion3", 2048, NULL, tskIDLE_PRIORITY+1, NULL,0);
-
-    xTaskCreatePinnedToCore(BotonTask, "disparar", 2048, NULL, 2, NULL, 0);
-
-    xTaskCreatePinnedToCore(neopixel_VidasTask, "vidas", 2048, NULL, 2,NULL, 0);
-
-    xTaskCreatePinnedToCore(animacionEnemigosHorizontales, "enemigosH", 4096, NULL, 2, NULL, 0);
-    xTaskCreatePinnedToCore(animacionBalasEnemigas, "balasEnemigas", 4096, NULL, 2, NULL, 0);
-
-
-    const esp_timer_create_args_t timer_args = {
-    .callback = &Timer30s_Callback,
-    .name = "timer_30s"
-    };
-
-    ESP_ERROR_CHECK(esp_timer_create(&timer_args, &timer30s));
+static void setup_uart(void) {
     uart_config_t cfg = {
         .baud_rate = 115200,
         .data_bits = UART_DATA_8_BITS,
@@ -304,18 +268,59 @@ void app_main() {
 
     uart_param_config(UART_PORT, &cfg);
     uart_set_pin(UART_PORT, UART_TX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-
     uart_driver_install(UART_PORT, 1024, 0, 0, NULL, 0);
+}
+
+static void start_game_tasks(void) {
+    xTaskCreate(tareaADC, "tareaADC", 4096, NULL, 5, NULL);
+
+    xTaskCreatePinnedToCore(animacionNaveTask, "animacion", 2048, NULL, tskIDLE_PRIORITY+1, NULL, 0);
+    xTaskCreatePinnedToCore(animacionNaveJugadorPruebaTask, "animacion2", 2048, NULL, tskIDLE_PRIORITY+1, NULL, 0);
+    xTaskCreatePinnedToCore(animacionMisil, "animacion3", 2048, NULL, tskIDLE_PRIORITY+1, NULL, 0);
+
+    xTaskCreatePinnedToCore(BotonTask, "disparar", 2048, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(neopixel_VidasTask, "vidas", 2048, NULL, 2, NULL, 0);
+
+    xTaskCreatePinnedToCore(animacionEnemigosHorizontales, "enemigosH", 4096, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(animacionBalasEnemigas, "balasEnemigas", 4096, NULL, 2, NULL, 0);
+}
+
+static void init_timer_service(void) {
+    const esp_timer_create_args_t timer_args = {
+        .callback = &Timer30s_Callback,
+        .name = "timer_30s"
+    };
+
+    ESP_ERROR_CHECK(esp_timer_create(&timer_args, &timer30s));
+}
+
+// ================= APP MAIN =================
+void app_main() {
+    setup_storage();
+
+    // 1. Tarea GUI (Pantalla)
+    xTaskCreatePinnedToCore(guiTask, "gui", 4096*2, NULL, tskIDLE_PRIORITY+1, NULL, 1);
+
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    setup_peripherals();
+    inicializar_enemigos_y_balas();
+
+    OLED_MostrarPuntuacion(0);
+
+    start_game_tasks();
+    init_timer_service();
+    setup_uart();
 
     vTaskDelete(NULL);
 }
 
-void send_audio_cmd(const char *cmd)
+static void send_audio_cmd(const char *cmd)
 {
     uart_write_bytes(UART_PORT, cmd, strlen(cmd));
 }
 
-void IniciarADC(void)
+static void IniciarADC(void)
 {
 
     adc_continuous_handle_cfg_t adc_config = {
@@ -350,12 +355,12 @@ void IniciarADC(void)
     ESP_ERROR_CHECK(adc_continuous_start(handle));
 }
 
-void IniciarPines(){
+static void IniciarPines(){
     gpio_set_direction(BOTON_DISPARO, GPIO_MODE_INPUT);
     gpio_set_pull_mode(BOTON_DISPARO, GPIO_PULLDOWN_ONLY);
 }
 
-void i2c_init(void)
+static void i2c_init(void)
 {
     i2c_config_t conf = {
         .mode = I2C_MODE_MASTER,
@@ -363,7 +368,7 @@ void i2c_init(void)
         .scl_io_num = I2C_SCL,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = 400000
+        .master.clk_speed = I2C_FREQ
     };
 
     i2c_param_config(I2C_PORT, &conf);
@@ -394,7 +399,7 @@ void OLED_MostrarPuntuacion(int puntos)
 }
 
 
-void inicializar_enemigos_y_balas()
+static void inicializar_enemigos_y_balas()
 {
     for (int i = 0; i < MAX_ENEMIGOS_H; i++) {
         enemigosH[i].activo = false;
@@ -411,7 +416,7 @@ void inicializar_enemigos_y_balas()
     }
 }
 
-void neopixel_init() {
+static void neopixel_init() {
 
     led_strip_config_t strip_config = {
         .strip_gpio_num = LED_GPIO, // The GPIO that connected to the LED strip's data line
@@ -438,7 +443,7 @@ void neopixel_init() {
     
 }
 
-void neopixel_VidasTask(void *pvParameter) {
+static void neopixel_VidasTask(void *pvParameter) {
     int ultimaVida = -1;
 
     while (1) {
@@ -473,7 +478,7 @@ void neopixel_VidasTask(void *pvParameter) {
 
 
 
-void BotonTask(void *pvParameter){
+static void BotonTask(void *pvParameter){
 
     bool estadoAnterior = false;
     uint32_t tiempoUltimo = 0;
@@ -520,7 +525,7 @@ void BotonTask(void *pvParameter){
     }
 }
 
-void tareaADC(void *pv)
+static void tareaADC(void *pv)
 {
     uint8_t raw_buffer[256];
     uint32_t bytes_leidos = 0;
@@ -571,7 +576,7 @@ void tareaADC(void *pv)
 
 //DIBUJO DE LA NAVE (NAVES KAMIKACE)
 
-void dibujar_nave_pixelart(lv_obj_t * parent) {
+static void dibujar_nave_pixelart(lv_obj_t * parent) {
 
     static const uint8_t sprite_map[12][11] = {
         {0,0,0,0,0,1,0,0,0,0,0}, // Punta
@@ -619,7 +624,7 @@ void dibujar_nave_pixelart(lv_obj_t * parent) {
 
 //AQUI IRÁ EL CODIGO PARA LA NAVE DEL JUGADOR:
 
-void dibujar_nave_jugador(lv_obj_t * parent){
+static void dibujar_nave_jugador(lv_obj_t * parent){
 
     //PIXELART NAVE DEL JUGADOR
     static const uint8_t sprite_map[13][11] = {
@@ -673,7 +678,7 @@ void dibujar_nave_jugador(lv_obj_t * parent){
     lv_obj_set_size(parent, 11 * PIXEL_SIZE_PLAYER, 13 * PIXEL_SIZE_PLAYER);
 }
 
-void dibujar_misil(lv_obj_t *parent){
+static void dibujar_misil(lv_obj_t *parent){
     static const uint8_t misilpixel[8][3]={
         {0,2,0},
         {0,1,0},
@@ -720,7 +725,7 @@ void dibujar_misil(lv_obj_t *parent){
     lv_obj_set_size(parent, 3 * PIXEL_SIZE_MISIL, 8 * PIXEL_SIZE_MISIL);
 }
 
-void dibujar_nave_horizontal(lv_obj_t *parent)
+static void dibujar_nave_horizontal(lv_obj_t *parent)
 {
     // Sprite 11x8
     static const uint8_t sprite[8][11] = {
@@ -782,7 +787,7 @@ void dibujar_nave_horizontal(lv_obj_t *parent)
 }
 
 
-void dibujar_misil_enemigo(lv_obj_t *parent, int idx)
+static void dibujar_misil_enemigo(lv_obj_t *parent, int idx)
 {
     // Sprite 2x5 en codificación 3 = pixel rojo
     static const uint8_t misil[5][2] = {
@@ -836,7 +841,7 @@ void dibujar_misil_enemigo(lv_obj_t *parent, int idx)
 
 
 
-void animacionEnemigosHorizontales(void *pvParameter)
+static void animacionEnemigosHorizontales(void *pvParameter)
 {
     while (1) {
 
@@ -958,7 +963,7 @@ void animacionEnemigosHorizontales(void *pvParameter)
     }
 }
 
-bool ColisionBalaJugador(int balaX, int balaY, int jugadorX, int jugadorY)
+static bool ColisionBalaJugador(int balaX, int balaY, int jugadorX, int jugadorY)
 {
     if (balaX > jugadorX + JUGADOR_T_X) return false;
     if (balaX + MISIL_ENEMIGO_T_X < jugadorX) return false;
@@ -967,7 +972,7 @@ bool ColisionBalaJugador(int balaX, int balaY, int jugadorX, int jugadorY)
     return true;
 }
 
-void animacionBalasEnemigas(void *pvParameter)
+static void animacionBalasEnemigas(void *pvParameter)
 {
     while (1)
     {
@@ -1351,7 +1356,7 @@ static void animacionNaveJugadorPruebaTask(void *pvParameter){
 
 }
 
-bool FuncionVerificarColision(int jugadorX, int jugadorY, int EnemigoX, int EnemigoY){
+static bool FuncionVerificarColision(int jugadorX, int jugadorY, int EnemigoX, int EnemigoY){
 
     if(jugadorX > EnemigoX + ENEMIGO_T_X) return false;
 
@@ -1364,7 +1369,7 @@ bool FuncionVerificarColision(int jugadorX, int jugadorY, int EnemigoX, int Enem
     return true;
 }
 
-bool ColisionMisilEnemigo(int misilX, int misilY, int enemigoX, int enemigoY)
+static bool ColisionMisilEnemigo(int misilX, int misilY, int enemigoX, int enemigoY)
 {
     // Si el misil está a la derecha del enemigo → no chocan
     if(misilX > enemigoX + ENEMIGO_T_X) return false;
@@ -1508,7 +1513,7 @@ static void guiTask(void *pvParameter) {
     vTaskDelete(NULL);
 }
 
-void disparar_bala_enemiga(int ex, int ey)
+static void disparar_bala_enemiga(int ex, int ey)
 {
     for (int i = 0; i < MAX_BALAS_ENEMIGAS; i++)
     {
@@ -1534,7 +1539,7 @@ void disparar_bala_enemiga(int ex, int ey)
     }
 }
 
-bool ColisionJugadorEnemigoH(int jugadorX, int jugadorY, int enemigoX, int enemigoY)
+static bool ColisionJugadorEnemigoH(int jugadorX, int jugadorY, int enemigoX, int enemigoY)
 {
     if (jugadorX > enemigoX + ENEMIGO_H_T_X) return false;
     if (jugadorX + JUGADOR_T_X < enemigoX) return false;
@@ -1545,7 +1550,7 @@ bool ColisionJugadorEnemigoH(int jugadorX, int jugadorY, int enemigoX, int enemi
 }
 
 
-void iniciarTimer30s()
+static void iniciarTimer30s()
 {
     
     esp_timer_stop(timer30s);
@@ -1554,7 +1559,7 @@ void iniciarTimer30s()
 }
 
 
-void Timer30s_Callback(void *arg)
+static void Timer30s_Callback(void *arg)
 {
     ESP_LOGI("TIMER", "¡DIFICULTAD AUMENTADA!");
 
@@ -1587,7 +1592,7 @@ void Timer30s_Callback(void *arg)
 
 
 
-void spawn_enemigo_horizontal(int idx)
+static void spawn_enemigo_horizontal(int idx)
 {
     enemigosH[idx].activo = true;
 
@@ -1615,7 +1620,7 @@ void spawn_enemigo_horizontal(int idx)
 }
 
 
-void ReiniciarJuego(void)
+static void ReiniciarJuego(void)
 {
     estadoActual = ESTADO_INICIO;
     send_audio_cmd("PLAY STOP\n");
